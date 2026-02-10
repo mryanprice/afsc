@@ -19,7 +19,10 @@ func (s *Storager) List(ctx context.Context, resourceID string, options ...stora
 	if err != nil {
 		return nil, err
 	}
-	client := s.systemManager(resource.Region)
+	client, err := s.systemManager(ctx, resource.Region)
+	if err != nil {
+		return nil, err
+	}
 
 	var info []os.FileInfo
 	for {
