@@ -6,6 +6,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/viant/afs/storage"
 )
@@ -22,7 +23,10 @@ func (s *Storager) Exists(ctx context.Context, resourceID string, options ...sto
 	if err != nil {
 		return false, err
 	}
-	client := s.systemManager(resource.Region)
+	client, err := s.systemManager(ctx, resource.Region)
+	if err != nil {
+		return false, err
+	}
 	param, _ := s.getParameter(ctx, client, resource)
 	return param != nil, nil
 }
@@ -49,15 +53,19 @@ func (s *Storager) Close() error {
 	return nil
 }
 
-func (s *Storager) systemManager(region string) *ssm.Client {
+func (s *Storager) systemManager(ctx context.Context, region string) (*ssm.Client, error) {
 	s.mux.Lock()
 	defer s.mux.Unlock()
 	if s.region == "" || s.region != region {
 		s.region = region
-		s.client = ssm.New(ssm.Options{Region: region})
-		return s.client
+		cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
+		if err != nil {
+			return nil, fmt.Errorf("failed to load AWS config: %w", err)
+		}
+		s.client = ssm.NewFromConfig(cfg)
+		return s.client, nil
 	}
-	return s.client
+	return s.client, nil
 }
 
 // NewStorager create a new secret manager storager

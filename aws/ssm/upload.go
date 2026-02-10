@@ -17,7 +17,10 @@ func (s *Storager) Upload(ctx context.Context, resourceID string, mode os.FileMo
 	}
 	data, _ := io.ReadAll(reader)
 	stringValue := string(data)
-	client := s.systemManager(resource.Region)
+	client, err := s.systemManager(ctx, resource.Region)
+	if err != nil {
+		return err
+	}
 	overwrite := true
 	_, err = client.PutParameter(ctx, &ssm.PutParameterInput{
 		Name:      &resource.Name,

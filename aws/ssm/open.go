@@ -16,7 +16,10 @@ func (s *Storager) Open(ctx context.Context, resourceID string, options ...stora
 	if err != nil {
 		return nil, err
 	}
-	client := s.systemManager(resource.Region)
+	client, err := s.systemManager(ctx, resource.Region)
+	if err != nil {
+		return nil, err
+	}
 	parameter, err := s.getParameter(ctx, client, resource)
 	if err != nil {
 		return nil, err
