@@ -34,6 +34,15 @@ func (s *Storager) updateChecksum(input *s3.PutObjectInput, md5Hash *option.Md5,
 	input.ContentMD5 = aws.String(md5Hash.Encode())
 }
 
+func (s *Storager) retryPutObjectForRegion(ctx context.Context, input *s3.PutObjectInput, content []byte, err error) error {
+	if !isRegionRedirect(err) || !s.adjustRegionIfNeeded(ctx) {
+		return err
+	}
+	input.Body = bytes.NewReader(content)
+	_, retryErr := s.PutObject(ctx, input)
+	return retryErr
+}
+
 func (s *Storager) upload(ctx context.Context, destination string, mode os.FileMode, reader io.Reader, options []storage.Option) error {
 	md5Hash := &option.Md5{}
 	key := &option.AES256Key{}
@@ -99,6 +108,9 @@ func (s *Storager) upload(ctx context.Context, destination string, mode os.FileM
 				input.Body = bytes.NewReader(contentBytes)
 				_, err = s.PutObject(ctx, input)
 			}
+			if err != nil {
+				err = s.retryPutObjectForRegion(ctx, input, contentBytes, err)
+			}
 		}
 		if err != nil {
 			err = errors.Wrapf(err, "failed to upload: s3://%v/%v", s.bucket, destination)
@@ -149,6 +161,17 @@ func (s *Storager) upload(ctx context.Context, destination string, mode os.FileM
 		}
 	}
 	_, err := uploader.Upload(context.Background(), input)
+	if err != nil && isRegionRedirect(err) && s.adjustRegionIfNeeded(ctx) {
+		if seeker, ok := reader.(io.Seeker); ok {
+			if _, seekErr := seeker.Seek(0, io.SeekStart); seekErr == nil {
+				uploader = s3manager.NewUploader(s3.NewFromConfig(*s.config))
+				if stream.PartSize > 0 {
+					uploader.PartSize = int64(stream.PartSize)
+				}
+				_, err = uploader.Upload(ctx, input)
+			}
+		}
+	}
 	if err != nil {
 		return err
 	}

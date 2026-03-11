@@ -8,6 +8,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	s3manager "github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/pkg/errors"
 	"github.com/viant/afs/option"
@@ -113,12 +114,12 @@ func getAwsConfig(options []storage.Option) (awsConfig *aws.Config, err error) {
 		}
 		awsConfig = &defaultConfig
 	}
+	if awsRegion := os.Getenv(awsRegionEnvKey); awsRegion != "" {
+		awsConfig.Region = awsRegion
+	}
 	region := &option.Region{}
 	if _, ok := option.Assign(options, &region); ok {
 		awsConfig.Region = region.Name
-	}
-	if awsRegion := os.Getenv(awsRegionEnvKey); awsRegion != "" {
-		awsConfig.Region = awsRegion
 	}
 	return awsConfig, err
 }
@@ -156,30 +157,42 @@ func (s *Storager) initS3Client() error {
 		s.config.Region = awsDefaultRegion
 		s.Client = s3.NewFromConfig(*s.config)
 	}
-	s.adjustRegionIfNeeded()
+	s.adjustRegionIfNeeded(context.Background())
 	s.presignClient = s3.NewPresignClient(s.Client)
 	return nil
 }
 
-func (s *Storager) adjustRegionIfNeeded() {
+func (s *Storager) updateClientRegion(region string) bool {
+	if region == "" {
+		region = awsDefaultRegion
+	}
+	if s.config == nil || s.config.Region == region {
+		return false
+	}
+	s.config.Region = region
+	s.Client = s3.NewFromConfig(*s.config)
+	s.presignClient = s3.NewPresignClient(s.Client)
+	return true
+}
+
+func (s *Storager) adjustRegionIfNeeded(ctx context.Context) bool {
 	started := time.Now()
 	defer func() {
 		s.logF("s3:GetBucketLocation %v %s\n", s.bucket, time.Since(started))
 	}()
-	output, err := s.Client.GetBucketLocation(context.Background(), &s3.GetBucketLocationInput{Bucket: &s.bucket})
-	if err != nil {
+
+	region, err := s3manager.GetBucketRegion(ctx, s.Client, s.bucket)
+	if err == nil {
+		return s.updateClientRegion(region)
+	}
+
+	output, fallbackErr := s.Client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{Bucket: &s.bucket})
+	if fallbackErr != nil {
 		logger.Logf("unable to get '%v' bucket location: %v", s.bucket, err)
-		return
+		return false
 	}
 	if output.LocationConstraint != "" {
-		if s.config.Region == "" || s.config.Region != string(output.LocationConstraint) {
-			s.config.Region = string(output.LocationConstraint)
-			s.Client = s3.NewFromConfig(*s.config)
-		}
-	} else if s.config != nil {
-		if s.config.Region == "" || (s.config.Region != "" && s.config.Region != awsDefaultRegion) {
-			s.config.Region = awsDefaultRegion
-			s.Client = s3.NewFromConfig(*s.config)
-		}
+		return s.updateClientRegion(string(output.LocationConstraint))
 	}
+	return s.updateClientRegion(awsDefaultRegion)
 }

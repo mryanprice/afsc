@@ -5,10 +5,13 @@ import (
 )
 
 const (
-	noSuchBucketMessage  = "NoSuchBucket"
-	missingRegionMessage = "MissingRegion"
-	badRequestFragment   = "code: 400"
-	encryptionFragment   = "encryption"
+	noSuchBucketMessage    = "NoSuchBucket"
+	missingRegionMessage   = "MissingRegion"
+	badRequestFragment     = "code: 400"
+	encryptionFragment     = "encryption"
+	permanentRedirect      = "permanentredirect"
+	specifiedEndpoint      = "specified endpoint"
+	statusMovedPermanently = "statuscode: 301"
 )
 
 func isBucketNotFound(err error) bool {
@@ -24,6 +27,16 @@ func isFallbackError(err error) bool {
 	}
 	errorMessage := strings.ToLower(err.Error())
 	return strings.Contains(errorMessage, badRequestFragment) || strings.Contains(errorMessage, encryptionFragment)
+}
+
+func isRegionRedirect(err error) bool {
+	if err == nil {
+		return false
+	}
+	errorMessage := strings.ToLower(err.Error())
+	return strings.Contains(errorMessage, permanentRedirect) ||
+		strings.Contains(errorMessage, specifiedEndpoint) ||
+		strings.Contains(errorMessage, statusMovedPermanently)
 }
 
 func isNotFound(err error) bool {
