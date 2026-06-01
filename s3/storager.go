@@ -8,7 +8,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
-	s3manager "github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/pkg/errors"
 	"github.com/viant/afs/option"
@@ -181,9 +180,9 @@ func (s *Storager) adjustRegionIfNeeded(ctx context.Context) bool {
 		s.logF("s3:GetBucketLocation %v %s\n", s.bucket, time.Since(started))
 	}()
 
-	region, err := s3manager.GetBucketRegion(ctx, s.Client, s.bucket)
-	if err == nil {
-		return s.updateClientRegion(region)
+	head, err := s.Client.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: &s.bucket})
+	if err == nil && head != nil && head.BucketRegion != nil {
+		return s.updateClientRegion(*head.BucketRegion)
 	}
 
 	output, fallbackErr := s.Client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{Bucket: &s.bucket})

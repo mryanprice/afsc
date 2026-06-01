@@ -8,7 +8,8 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	s3manager "github.com/aws/aws-sdk-go-v2/feature/s3/manager"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager"
+	tmtypes "github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/pkg/errors"
@@ -117,11 +118,9 @@ func (s *Storager) upload(ctx context.Context, destination string, mode os.FileM
 		}
 		return err
 	}
-	uploader := s3manager.NewUploader(s3.NewFromConfig(*s.config))
-	if stream.PartSize > 0 {
-		uploader.PartSize = int64(stream.PartSize)
-	}
-	input := &s3.PutObjectInput{
+
+	uploader := newUploader(s.Client, stream.PartSize)
+	input := &transfermanager.UploadObjectInput{
 		Bucket:   aws.String(s.bucket),
 		Key:      aws.String(destination),
 		Body:     reader,
@@ -140,7 +139,7 @@ func (s *Storager) upload(ctx context.Context, destination string, mode os.FileM
 		input.GrantWriteACP = &grant.WriteACP
 	}
 	if acl.ACL != "" {
-		input.ACL = types.ObjectCannedACL(acl.ACL)
+		input.ACL = tmtypes.ObjectCannedACL(acl.ACL)
 	}
 
 	if len(meta.Values) > 0 {
@@ -160,15 +159,12 @@ func (s *Storager) upload(ctx context.Context, destination string, mode os.FileM
 			input.Metadata[k] = value
 		}
 	}
-	_, err := uploader.Upload(context.Background(), input)
+	_, err := uploader.UploadObject(context.Background(), input)
 	if err != nil && isRegionRedirect(err) && s.adjustRegionIfNeeded(ctx) {
 		if seeker, ok := reader.(io.Seeker); ok {
 			if _, seekErr := seeker.Seek(0, io.SeekStart); seekErr == nil {
-				uploader = s3manager.NewUploader(s3.NewFromConfig(*s.config))
-				if stream.PartSize > 0 {
-					uploader.PartSize = int64(stream.PartSize)
-				}
-				_, err = uploader.Upload(ctx, input)
+				uploader = newUploader(s.Client, stream.PartSize)
+				_, err = uploader.UploadObject(ctx, input)
 			}
 		}
 	}
@@ -206,4 +202,12 @@ func updateMetaContent(meta *content.Meta, input *s3.PutObjectInput) {
 			input.Metadata[k] = value
 		}
 	}
+}
+
+func newUploader(client *s3.Client, partSize int) *transfermanager.Client {
+	return transfermanager.New(client, func(o *transfermanager.Options) {
+		if partSize > 0 {
+			o.PartSizeBytes = int64(partSize)
+		}
+	})
 }
