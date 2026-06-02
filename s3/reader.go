@@ -5,19 +5,18 @@ import (
 	"fmt"
 	"io"
 
-	s3manager "github.com/aws/aws-sdk-go-v2/feature/s3/manager"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager"
 	"github.com/pkg/errors"
 	"github.com/viant/afs/base"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager/types"
 )
 
 type reader struct {
-	from       int64
-	size       int
-	input      *s3.GetObjectInput
-	downloader *s3manager.Downloader
-	ctx        context.Context
-	writer     *Writer
+	from   int64
+	size   int
+	input  *transfermanager.GetObjectInput
+	client *transfermanager.Client
+	ctx    context.Context
 }
 
 func (t *reader) Seek(offset int64, whence int) (int64, error) {
@@ -43,22 +42,26 @@ func (t *reader) Read(dest []byte) (int, error) {
 
 	rangeLiteral := fmt.Sprintf(base.RangeHeaderTmpl, from, to)
 	t.input.Range = &rangeLiteral
-	t.writer.Reset()
-	_, err := t.downloader.Download(t.ctx, t.writer, t.input)
+	output, err := t.client.GetObject(t.ctx, t.input, func(opt *transfermanager.Options) {
+		opt.GetObjectType = types.GetObjectRanges
+	})
 	if err != nil {
 		return 0, err
 	}
-	copied := copy(dest, t.writer.Bytes())
+	data, err := io.ReadAll(output.Body)
+	if err != nil {
+		return 0, err
+	}
+	copied := copy(dest, data)
 	return copied, nil
 }
 
 // NewReadSeeker create a reader seeker
-func NewReadSeeker(ctx context.Context, input *s3.GetObjectInput, downloader *s3manager.Downloader, partSize, size int) io.ReadSeeker {
+func NewReadSeeker(ctx context.Context, input *transfermanager.GetObjectInput, client *transfermanager.Client, partSize, size int) io.ReadSeeker {
 	return &reader{
-		ctx:        ctx,
-		writer:     NewWriter(partSize),
-		input:      input,
-		downloader: downloader,
-		size:       size,
+		ctx:    ctx,
+		input:  input,
+		client: client,
+		size:   size,
 	}
 }

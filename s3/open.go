@@ -8,8 +8,7 @@ import (
 	"strings"
 	"time"
 
-	s3manager "github.com/aws/aws-sdk-go-v2/feature/s3/manager"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/transfermanager"
 	"github.com/pkg/errors"
 	"github.com/viant/afs/base"
 	"github.com/viant/afs/option"
@@ -35,7 +34,7 @@ func (s *Storager) Open(ctx context.Context, location string, options ...storage
 	stream := &option.Stream{}
 	key := &option.AES256Key{}
 	option.Assign(options, &key, &stream)
-	input := &s3.GetObjectInput{
+	input := &transfermanager.GetObjectInput{
 		Bucket: &s.bucket,
 		Key:    &parsedLocation,
 	}
@@ -48,7 +47,7 @@ func (s *Storager) Open(ctx context.Context, location string, options ...storage
 		input.SSECustomerKeyMD5 = &key.Base64KeyMd5Hash
 	}
 
-	downloader := s3manager.NewDownloader(s3.NewFromConfig(*s.config))
+	tmClient := transfermanager.New(s.Client)
 	if stream.PartSize > 0 {
 		objects, err := s.List(ctx, location, key)
 		if err != nil {
@@ -57,19 +56,20 @@ func (s *Storager) Open(ctx context.Context, location string, options ...storage
 		if len(objects) == 0 {
 			return nil, fmt.Errorf("s3://%v/%v no found", s.bucket, location)
 		}
-		downloader.PartSize = int64(stream.PartSize)
 		stream.Size = int(objects[0].Size())
-		readSeeker := NewReadSeeker(ctx, input, downloader, stream.PartSize, stream.Size)
+		readSeeker := NewReadSeeker(ctx, input, tmClient, stream.PartSize, stream.Size)
 		reader := base.NewStreamReader(stream, readSeeker)
 		return reader, nil
 	}
 
-	writer := NewWriter(32 * 1024)
 	location = strings.Trim(location, "/")
-	_, err = downloader.Download(ctx, writer, input)
-	data := writer.Bytes()
+	output, err := tmClient.GetObject(ctx, input)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to download: s3://%v/%v", s.bucket, location)
+	}
+	data, err := io.ReadAll(output.Body)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to read: s3://%v/%v", s.bucket, location)
 	}
 	return io.NopCloser(bytes.NewReader(data)), nil
 }
