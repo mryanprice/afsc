@@ -17,9 +17,6 @@ func (o *CLIOption) Init() error {
 
 // Validate validates the option.
 func (o *CLIOption) Validate() error {
-	if o.CLI == nil {
-		return nil
-	}
 	return nil
 }
 
