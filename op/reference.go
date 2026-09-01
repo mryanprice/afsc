@@ -19,7 +19,7 @@ func reference(baseURL, resourceID string) (string, error) {
 	if vault == "" {
 		return "", fmt.Errorf("vault was empty in %v", baseURL)
 	}
-	path := strings.TrimPrefix(resourceID, "/")
+	path := strings.TrimLeft(resourceID, "/")
 	if path == "" {
 		return "", fmt.Errorf("secret path was empty")
 	}

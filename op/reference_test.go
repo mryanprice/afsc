@@ -30,6 +30,11 @@ func TestReference(t *testing.T) {
 		},
 		{
 			baseURL:    "op://Private",
+			resourceID: "//e2e-account.json/notesPlain",
+			expect:     "op://Private/e2e-account.json/notesPlain",
+		},
+		{
+			baseURL:    "op://Private",
 			resourceID: "",
 			hasError:   true,
 		},

@@ -26,8 +26,8 @@ func TestUploadCreateUnsupported(t *testing.T) {
 	}
 
 	uploadErr := storager.Upload(context.Background(), "/a", file.DefaultFileOsMode, bytes.NewReader(nil))
-	assert.Error(t, uploadErr)
+	assert.ErrorIs(t, uploadErr, errUnsupported)
 
 	createErr := storager.Create(context.Background(), "/a", file.DefaultFileOsMode, bytes.NewReader(nil), false)
-	assert.Error(t, createErr)
+	assert.ErrorIs(t, createErr, errUnsupported)
 }

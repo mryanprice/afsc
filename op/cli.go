@@ -31,7 +31,6 @@ func NewCLI() CLI {
 
 func (c *commandCLI) Read(ctx context.Context, reference string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, c.binary, "read", reference)
-	cmd.Env = os.Environ()
 	out, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
